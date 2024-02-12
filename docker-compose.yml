@@ -1,0 +1,45 @@
+  version: '3'
+  services:
+    postgres:
+      image: postgres:latest
+      ports:
+        - "5444:5432"
+      environment:
+        POSTGRES_DB: db
+        POSTGRES_USER: user
+        POSTGRES_PASSWORD: user
+      volumes:
+        - pgdata:/var/lib/postgresql/data
+        - ${PWD}/db.psql:/docker-entrypoint-initdb.d/db.psql
+      command: ["bash", "-c", "if [ -f /docker-entrypoint-initdb.d/db.psql ]; then psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} < /docker-entrypoint-initdb.d/db.psql; fi && exec docker-entrypoint.sh postgres"]
+
+    downloader:
+      build: ./downloader
+      ports:
+        - "3000:3000"
+      depends_on:
+        - postgres  
+
+    # manager:
+    #   build: ./manager
+    #   # Add configurations as needed
+
+    poster:
+      build: ./poster
+      ports:
+        - "3001:3001"
+      depends_on:
+        - postgres
+
+    # scheduler:
+    #   build: ./scheduler
+    #   # Add configurations as needed
+
+    # face:
+    #   build: ./face
+    #   ports:
+    #     - "8080:8080"
+    #   # Add configurations as needed
+
+  volumes:
+    pgdata:
