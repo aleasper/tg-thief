@@ -1,3 +1,6 @@
+session.txt
+*.txt
+
 # Logs
 logs
 *.log

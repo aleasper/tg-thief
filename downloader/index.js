@@ -1,57 +1,237 @@
 const { Client } = require('pg');
+const fs = require('fs');
+const path = require('path');
+const { TelegramClient, Api } = require('telegram');
+const { StringSession } = require('telegram/sessions');
+const input = require('input');
+const http = require('http');
+const url = require('url');
 
-// Connection configuration (replace with your actual credentials)
 const config = {
   host: 'postgres',
-  port:   5432,
+  port:   5432,  
   database: 'db',
   user: 'user',
   password: 'user',
 };
+const apiId = 772217;
+const apiHash = "94d36c985c12bce3ece0f19a0f667b2c";
 
-// Function to create the Posts table if it doesn't exist
-async function ensureTableExists(client) {
-  const tableName = 'Posts';
-    await client.query(`
-    CREATE TABLE IF NOT EXISTS ${tableName} (
-        id SERIAL PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
-        content TEXT NOT NULL
-      );
-    `);
-    console.log(`Table "${tableName}" created.`);
-}
+// async function createTables() {
+//   const client = new Client(config);
+//   try {
+//     await client.connect();
 
-// Function to insert random values into the Posts table
-async function insertRandomValues() {
+//     // SQL commands to drop existing tables and create new ones
+//     const commands = [
+//       'DROP TABLE IF EXISTS Content;',
+//       'DROP TABLE IF EXISTS Posts;',
+//       'DROP TABLE IF EXISTS Post;',
+//       'DROP TABLE IF EXISTS Source;',
+//       `
+//       CREATE TABLE Source (
+//           id SERIAL PRIMARY KEY,
+//           tg_id BIGINT,
+//           name VARCHAR(60),
+//           descr VARCHAR(300)
+//       );`,
+//       `
+//       CREATE TABLE Post (
+//           id SERIAL PRIMARY KEY,
+//           source_id INTEGER REFERENCES Source(id),
+//           text VARCHAR(700)
+//       );`,
+//       `
+//       CREATE TABLE Content (
+//           id SERIAL PRIMARY KEY,
+//           post_id INTEGER REFERENCES Post(id),
+//           type VARCHAR(20),
+//           content TEXT
+//       );`,
+//       `
+//       INSERT INTO Source(id, tg_id, name, descr) VALUES (1, -1002025065168, 'test', 'test');
+//       `
+//     ];
+
+//     // Execute each command
+//     for (const command of commands) {
+//       await client.query(command);
+//     }
+//   } catch (err) {
+//     console.error('Error creating tables', err.stack);
+//     throw err;
+//   } finally {
+//     await client.end();
+//   }
+// }
+
+// Call the function to create tables
+// createTables();
+
+async function createSessionsTable() {
   const client = new Client(config);
-
   try {
-    // Connect to the PostgreSQL client
     await client.connect();
-
-    // Ensure the Posts table exists
-    await ensureTableExists(client);
-
-    await new Promise((r) => setTimeout(() => r(), 13000));
-
-    // Define the SQL query with placeholders for values
-    const text = 'INSERT INTO Posts(title, content) VALUES($1, $2) RETURNING *';
-
-    // Random values to insert
-    const values = ['Sample Title', 'This is a sample content.'];
-
-    // Execute the query with the values
-    const res = await client.query(text, values);
-
-    console.log('Inserted values:', res.rows[0]);
+    const command = `
+      CREATE TABLE IF NOT EXISTS sessions (
+        id SERIAL PRIMARY KEY,
+        session TEXT NOT NULL
+      );
+    `;
+    await client.query(command);
   } catch (err) {
-    console.error('Error executing query', err.stack);
+    console.error('Error creating sessions table:', err);
+    throw err;
   } finally {
-    // Close the client connection
     await client.end();
   }
 }
 
-// Call the function to insert the values
-insertRandomValues();
+async function getSessionFromDB() {
+  const client = new Client(config);
+  try {
+    await client.connect();
+    const query = 'SELECT session FROM sessions WHERE id =  1;';
+    const result = await client.query(query);
+    return result;
+  } catch (err) {
+    console.error('Error retrieving session from DB:', err);
+    throw err;
+  } finally {
+    await client.end();
+  }
+}
+
+async function saveSessionToDB(sessionString) {
+  const client = new Client(config);
+  try {
+    await client.connect();
+    const query = `
+      INSERT INTO sessions (session) VALUES ($1)
+      ON CONFLICT (id) DO UPDATE SET session = EXCLUDED.session
+      WHERE sessions.id =  1;
+    `;
+    await client.query(query, [sessionString]);
+  } catch (err) {
+    console.error('Error saving session to DB:', err);
+    throw err;
+  } finally {
+    await client.end();
+  }
+}
+
+async function insertPosts(content) {
+  const client = new Client(config);
+  try {
+    await client.connect();
+    const insertPostText = 'INSERT INTO Post(source_id, text) VALUES($1, $2) RETURNING id;';
+    const insertContentText = 'INSERT INTO Content(post_id, type, content) VALUES($1, $2, $3);';
+
+    for (const postContent of content) {
+      const result = await client.query(insertPostText, [postContent.sourceId, postContent.text]);
+      const postId = result.rows[0].id; // This will be the ID of the inserted post
+
+      for (const image of postContent.images) {
+        await client.query(insertContentText, [postId, 'image', image]);
+      }
+    }
+  } catch (err) {
+    console.error('Error executing query', err.stack);
+    throw err;
+  } finally {
+    await client.end();
+  }
+}
+
+async function getLastPosts(client, channelId, limit = 1) {
+  try {
+    await client.start();
+    const posts = await client.invoke(
+      new Api.messages.GetHistory({
+        peer: channelId,
+        limit,
+        offsetId:  0,
+        offsetDate: undefined,
+        addOffset:  0,
+        maxId:  0,
+        minId:  0,
+        hash:  0
+      })
+    );
+
+    return posts.messages;
+  } catch (error) {
+    console.error('Error fetching posts:', error);
+    return [];
+  }
+}
+
+const postContents = async (client, posts, sourceId) => {
+  return await Promise.all(posts.map(async (message) => {
+    const content = {
+      text: message.message,
+      sourceId,
+      images: []
+    };
+    if (message.media && message.media.className === 'MessageMediaPhoto') {
+      const media = message.media;
+      const imageBuffer = await client.downloadMedia(media, {
+        workers:  5,
+      });
+      content.images.push(imageBuffer.toString('base64'));
+    }
+    return content;
+  }));
+}
+
+const getClient = async () => {
+  let session;
+  try {
+    // Retrieve the session from the database
+    const result = await getSessionFromDB();
+    session = result.rows[0].session;
+  } catch (err) {
+    console.error('Error retrieving session from DB:', err);
+    session = "";
+  }
+  const client = new TelegramClient(new StringSession(session), apiId, apiHash, {
+    connectionRetries: 5,
+  });
+  await client.start({
+    phoneNumber: async () => await input.text("Please enter your number: "),
+    password: async () => await input.text("Please enter your password: "),
+    phoneCode: async () =>
+      await input.text("Please enter the code you received: "),
+    onError: (err) => console.log(err),
+  });
+  await saveSessionToDB(client.session.save());
+  return client
+}
+
+
+(async () => {
+  await createSessionsTable();
+  const client = await getClient();
+  http.createServer(async (req, res) => {
+    const { method } = req;
+    const { query, pathname } = url.parse(req.url, true);
+    if (method !== 'POST' || pathname !== '/download' || !query.channel || !query.amount || !query.sourceId) {
+      res.writeHead(400)
+      res.end('Support only POST /download?channel=123&amount=10&sourceId=1')
+      return
+    }
+    try {
+      const posts = await getLastPosts(client, +query.channel, +query.amount)
+      const content = await postContents(client, posts, +query.sourceId);
+      await insertPosts(content);
+      res.writeHead(200)
+      res.end();
+    } catch (e) {
+      console.log(e)
+      res.writeHead(500);
+      res.end(`Error: ${JSON.stringify(e)}`);
+      return
+    }
+  }).listen(3000);
+
+})();

@@ -11,7 +11,7 @@ const config = {
 
 // Function to fetch all records from the Posts table
 async function fetchAllPosts(client) {
-  const res = await client.query('SELECT * FROM Posts');
+  const res = await client.query('SELECT * FROM Post');
   return res.rows;
 }
 

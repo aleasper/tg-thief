@@ -11,6 +11,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "pg": "^8.11.3"
+    "input": "^1.0.1",
+    "pg": "^8.11.3",
+    "telegram": "^2.19.15"
   }
 }
