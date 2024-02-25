@@ -4,13 +4,23 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "npx tsc && node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/axios": "^0.14.0",
+    "@types/pg": "^8.11.0",
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.4",
+    "node-telegram-bot-api": "^0.64.0",
     "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "@types/node-telegram-bot-api": "^0.64.2",
+    "typescript": "^5.3.3"
   }
 }

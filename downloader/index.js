@@ -17,57 +17,6 @@ const config = {
 const apiId = 772217;
 const apiHash = "94d36c985c12bce3ece0f19a0f667b2c";
 
-// async function createTables() {
-//   const client = new Client(config);
-//   try {
-//     await client.connect();
-
-//     // SQL commands to drop existing tables and create new ones
-//     const commands = [
-//       'DROP TABLE IF EXISTS Content;',
-//       'DROP TABLE IF EXISTS Posts;',
-//       'DROP TABLE IF EXISTS Post;',
-//       'DROP TABLE IF EXISTS Source;',
-//       `
-//       CREATE TABLE Source (
-//           id SERIAL PRIMARY KEY,
-//           tg_id BIGINT,
-//           name VARCHAR(60),
-//           descr VARCHAR(300)
-//       );`,
-//       `
-//       CREATE TABLE Post (
-//           id SERIAL PRIMARY KEY,
-//           source_id INTEGER REFERENCES Source(id),
-//           text VARCHAR(700)
-//       );`,
-//       `
-//       CREATE TABLE Content (
-//           id SERIAL PRIMARY KEY,
-//           post_id INTEGER REFERENCES Post(id),
-//           type VARCHAR(20),
-//           content TEXT
-//       );`,
-//       `
-//       INSERT INTO Source(id, tg_id, name, descr) VALUES (1, -1002025065168, 'test', 'test');
-//       `
-//     ];
-
-//     // Execute each command
-//     for (const command of commands) {
-//       await client.query(command);
-//     }
-//   } catch (err) {
-//     console.error('Error creating tables', err.stack);
-//     throw err;
-//   } finally {
-//     await client.end();
-//   }
-// }
-
-// Call the function to create tables
-// createTables();
-
 async function createSessionsTable() {
   const client = new Client(config);
   try {
@@ -124,8 +73,8 @@ async function insertPosts(content) {
   const client = new Client(config);
   try {
     await client.connect();
-    const insertPostText = 'INSERT INTO Post(source_id, text) VALUES($1, $2) RETURNING id;';
-    const insertContentText = 'INSERT INTO Content(post_id, type, content) VALUES($1, $2, $3);';
+    const insertPostText = 'INSERT INTO Post(sourceId, text) VALUES($1, $2) RETURNING id;';
+    const insertContentText = 'INSERT INTO Content(postId, type, content) VALUES($1, $2, $3);';
 
     for (const postContent of content) {
       const result = await client.query(insertPostText, [postContent.sourceId, postContent.text]);
@@ -187,7 +136,6 @@ const postContents = async (client, posts, sourceId) => {
 const getClient = async () => {
   let session;
   try {
-    // Retrieve the session from the database
     const result = await getSessionFromDB();
     session = result.rows[0].session;
   } catch (err) {
